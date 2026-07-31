@@ -13,6 +13,14 @@ class EventLoop;
 
 class Channel {
 public:
+    enum State
+    {
+        kNew = -1,
+        kAdded = 1,
+        kDeleted = 2
+    };
+
+
     using EventCallback = std::function<void()>;
 
     Channel( const int fd, EventLoop *loop): fd_(fd), loop_(loop) {};
@@ -24,8 +32,6 @@ public:
     void tie(const std::shared_ptr<void>& obj);
 
     void remove();
-
-    void handleEvent() const;
 
     void setReadCallback(EventCallback cb) { readCallback_ = std::move(cb); }
     void setWriteCallback(EventCallback cb) { writeCallback_ = std::move(cb); }
@@ -49,10 +55,11 @@ public:
     [[nodiscard]] int index() const { return index_; }
     [[nodiscard]] int fd() const { return fd_; }
     [[nodiscard]] uint32_t events() const { return events_; }
-
+    void handleEventWithGuard() const;
     [[nodiscard]] EventLoop *loop() const { return loop_; }
 private:
     void update();
+    void handleEvent() const;
 
     const int fd_{-1};
     EventLoop* loop_{nullptr};
@@ -63,7 +70,7 @@ private:
 
     uint32_t events_{};
     uint32_t revents_{};
-    int index_{};
+    int index_{kNew};
 
     EventCallback readCallback_{};
     EventCallback writeCallback_{};
@@ -72,6 +79,7 @@ private:
 
     std::weak_ptr<void> tie_;
     bool tied_{false};
+
 };
 
 #endif //CHANNEL_H

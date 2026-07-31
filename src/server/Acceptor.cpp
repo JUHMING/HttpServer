@@ -5,7 +5,7 @@
 #include"Acceptor.h"
 #include <unistd.h>
 
-Acceptor::Acceptor(std::string_view ip, uint16_t port):
+Acceptor::Acceptor(const std::string_view ip, const uint16_t port):
                 listenSocket_(),
                 acceptAddress_(std::string(ip), port)
 {

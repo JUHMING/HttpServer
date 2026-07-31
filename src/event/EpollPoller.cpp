@@ -6,12 +6,10 @@
 #include"Channel.h"
 #include<unistd.h>
 #include<cstring>
+#include <iostream>
 #include<stdexcept>
+#include<cerrno>
 #include <system_error>
-
-constexpr int kNew = -1;
-constexpr int kAdded = 1;
-constexpr int kDeleted = 2;
 
 EpollPoller::EpollPoller(EventLoop* loop) : Poller(loop) {
     epollFd_ = ::epoll_create1(EPOLL_CLOEXEC);
@@ -27,10 +25,14 @@ EpollPoller::~EpollPoller() {
     }
 }
 
-void EpollPoller::poll(int timeoutMs, ChannelList* activeChannels) {
+void EpollPoller::poll(const int timeoutMs, ChannelList* activeChannels) {
     int numEvents = epoll_wait(epollFd_, events_.data(), static_cast<int>(events_.size()), timeoutMs);
+    const int savedErrno = errno;
     if (numEvents < 0) {
-        throw std::runtime_error("epoll_wait() failed in EpollPoller::poll");
+        if (savedErrno == EINTR) {
+            return;
+        }
+        throw std::system_error(savedErrno, std::generic_category(), "epoll_wait() failed in EpollPoller::poll");
     }
 
     if (numEvents == 0) {
@@ -52,17 +54,17 @@ void EpollPoller::poll(int timeoutMs, ChannelList* activeChannels) {
 void EpollPoller::updateChannel(Channel* channel) {
     const int state = channel->index();
 
-    if (state == kNew || state == kDeleted) {
+    if (state == Channel::State::kNew || state == Channel::State::kDeleted) {
         int fd = channel->fd();
-        if (state == kNew) {
+        if (state == Channel::State::kNew) {
             channels_[fd] = channel;
         }
-        channel->setIndex(kAdded);
+        channel->setIndex(Channel::State::kAdded);
         update(EPOLL_CTL_ADD, channel);
     }else {
         if (channel->isNoneEvent()) {
             update(EPOLL_CTL_DEL, channel);
-            channel->setIndex(kDeleted);
+            channel->setIndex(Channel::State::kDeleted);
         }else {
             update(EPOLL_CTL_MOD, channel);
         }
@@ -74,13 +76,13 @@ void EpollPoller::removeChannel(Channel* channel) {
     channels_.erase(fd);
 
     const int state = channel->index();
-    if (state == kAdded) {
+    if (state == Channel::State::kAdded) {
         update(EPOLL_CTL_DEL, channel);
     }
-    channel->setIndex(kNew);
+    channel->setIndex(Channel::State::kNew);
 }
 
-void EpollPoller::update(int operation, Channel* channel) const {
+void EpollPoller::update(const int operation, Channel* channel) const {
     struct epoll_event event{};
     ::memset(&event, 0, sizeof(event));
     event.events = channel->events();

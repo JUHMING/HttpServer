@@ -1,27 +1,132 @@
+#include "server/TcpServer.h"
 #include "event/EventLoop.h"
 #include "net/InetAddress.h"
-#include "server/TcpServer.h"
 #include <iostream>
+#include <csignal>
+#include <thread>
+#include <mutex>
 
-int main() {
-    std::cout << "[INFO]: NebulaServer Core Engine starting up..." << std::endl;
+int main()
+{
+    ::signal(SIGPIPE, SIG_IGN);
 
-    // 1. 创建事件循环核心（大管家）
-    EventLoop loop;
+    try
+    {
+        EventLoop loop;
 
-    // 2. 设定服务器要监听的专属招牌（8080 端口）
-    InetAddress listenAddr(8080);
+        InetAddress listenAddr("0.0.0.0", 8880);
 
-    // 3. 拉起最高总指挥部
-    TcpServer server(&loop, listenAddr, "NebulaServer-Core");
+        TcpServer server(&loop, listenAddr, "HTTPServer");
 
-    // 4. 总指挥部开门营业
-    server.start();
 
-    std::cout << "[INFO]: Reactor Engine initialized successfully. Entering loop..." << std::endl;
+        TcpConnection::TcpConnectionPtr currentConn;
+        std::mutex connMutex;
 
-    // 5. 让心脏开始跳动！主线程在此处挂起睡眠，静待网络中断信号
-    loop.loop();
+
+        // 连接回调
+        server.setConnectionCallback(
+            [&](const TcpConnection::TcpConnectionPtr& conn)
+            {
+                std::lock_guard<std::mutex> lock(connMutex);
+
+                if (conn->isConnected())
+                {
+                    currentConn = conn;
+
+                    std::cout
+                        << "[INFO] New connection: "
+                        << conn->getName()
+                        << std::endl;
+                }
+                else
+                {
+                    std::cout
+                        << "[INFO] Connection closed: "
+                        << conn->getName()
+                        << std::endl;
+
+                    if(currentConn == conn)
+                    {
+                        currentConn.reset();
+                    }
+                }
+            }
+        );
+
+
+        // 收消息
+        server.setMessageCallback(
+            [](const TcpConnection::TcpConnectionPtr& conn,
+               const std::string& message)
+            {
+                std::cout
+                    << "[CLIENT] "
+                    << message
+                    << std::endl;
+
+                // echo
+                conn->send(message);
+            }
+        );
+
+
+        server.start();
+
+
+        std::cout
+            << "=================================\n"
+            << " TCP Server started\n"
+            << " Listen: 0.0.0.0:8880\n"
+            << "================================="
+            << std::endl;
+
+
+        /*
+         * 服务器交互窗口
+         */
+        std::thread consoleThread(
+            [&]()
+            {
+                std::string message;
+
+                while(std::getline(std::cin, message))
+                {
+                    std::lock_guard<std::mutex> lock(connMutex);
+
+                    if(currentConn)
+                    {
+                        currentConn->send(message);
+
+                        std::cout
+                            << "[SERVER] "
+                            << message
+                            << std::endl;
+                    }
+                    else
+                    {
+                        std::cout
+                            << "[WARN] No client connected"
+                            << std::endl;
+                    }
+                }
+            }
+        );
+
+
+        loop.loop();
+
+
+        consoleThread.join();
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr
+            << "[FATAL] "
+            << e.what()
+            << std::endl;
+
+        return -1;
+    }
 
     return 0;
 }

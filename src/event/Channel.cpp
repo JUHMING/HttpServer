@@ -23,6 +23,17 @@ void Channel::tie(const std::shared_ptr<void>& obj) {
     tied_ = true;
 }
 
+void Channel::handleEventWithGuard() const {
+    if (tied_) {
+        std::shared_ptr<void> guard = tie_.lock();
+        if (guard) {
+            handleEvent();
+        }
+    } else {
+        handleEvent();
+    }
+}
+
 void Channel::handleEvent() const {
     if ((revents_ & EPOLLHUP) && !(revents_ & EPOLLIN)) {
         if (closeCallback_) closeCallback_();

@@ -27,7 +27,7 @@ private:
 
     using EventList = std::vector<struct epoll_event>;
     EventList events_;
-    int epollFd_{-1};
+    int epollFd_{};
 };
 
 #endif //EPOLLPOLLER_H

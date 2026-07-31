@@ -27,6 +27,10 @@ public:
     void listen() const;
 
     void handleRead() const;
+
+    [[nodiscard]] int fd() const {
+        return listenSocket_.fd();
+    }
 private:
     Socket listenSocket_{};
     InetAddress acceptAddress_{};
